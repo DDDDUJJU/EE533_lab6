@@ -46,7 +46,7 @@ sub initialize {
    regwrite($INS_ADDRIN, 0x80000004);
    regwrite( $INS_WDATA, 0x0);
 
-   regwrite($INS_ADDRIN, 0x80000005);
+   regwrite($INS_ADDRIN, 0x80000000);
    regwrite( $INS_WDATA, 0x93000000);
 
    regwrite($INS_ADDRIN, 0x00000000);
