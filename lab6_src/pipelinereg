@@ -1,0 +1,131 @@
+#!/usr/bin/perl -w
+use lib "/usr/local/netfpga/lib/Perl5";
+use strict;
+
+my $PIPELINE_ENABLE = 0x2000200;
+my $INS_ADDRIN = 0x2000204;
+my $INS_WDATA = 0x2000208;
+my $DATA_WDATA_0 = 0x200020c;
+my $DATA_WDATA_1 = 0x2000210;
+my $DATA_ADDRIN = 0x2000214;
+my $DATA_RDATA_0 = 0x2000218;
+my $DATA_RDATA_1 = 0x200021c;
+
+sub regwrite {
+   my( $addr, $value ) = @_;
+   my $cmd = sprintf( "regwrite $addr 0x%08x", $value );
+   my $result = `$cmd`;
+   # print "Ran command '$cmd' and got result '$result'\n";
+}
+
+sub regread {
+   my( $addr ) = @_;
+   my $cmd = sprintf( "regread $addr" );
+   my @out = `$cmd`;
+   my $result = $out[0];
+   if ( $result =~ m/Reg (0x[0-9a-f]+) \((\d+)\):\s+(0x[0-9a-f]+) \((\d+)\)/ ) {
+      $result = $3;
+   }
+   return $result;
+}
+
+sub initialize {
+   # Load instructions
+   regwrite($INS_ADDRIN, 0x80000000);
+   regwrite($INS_WDATA, 0x40400000);
+
+   regwrite($INS_ADDRIN, 0x80000001);
+   regwrite( $INS_WDATA, 0x40600000);
+
+   regwrite($INS_ADDRIN, 0x80000002);
+   regwrite( $INS_WDATA, 0x0);
+
+   regwrite($INS_ADDRIN, 0x80000003);
+   regwrite( $INS_WDATA, 0x0);
+
+   regwrite($INS_ADDRIN, 0x80000004);
+   regwrite( $INS_WDATA, 0x0);
+
+   regwrite($INS_ADDRIN, 0x80000005);
+   regwrite( $INS_WDATA, 0x93000000);
+
+   regwrite($INS_ADDRIN, 0x00000000);
+   regwrite( $INS_WDATA, 0x0);
+
+   # Load data memory
+   regwrite($DATA_ADDRIN, 0x80000000);
+   regwrite( $DATA_WDATA_0, 0x4);
+
+   regwrite($DATA_ADDRIN, 0x80000004);
+   regwrite( $DATA_WDATA_0, 0x64);
+
+   regwrite($DATA_ADDRIN, 0x00000000);
+   regwrite($DATA_WDATA_0, 0x0);
+}
+
+sub start {
+   regwrite( $PIPELINE_ENABLE, 0x1 );
+}
+
+sub stop {
+   regwrite( $PIPELINE_ENABLE, 0x0 );
+}
+
+sub readmem {
+   my( $addr ) = @_;
+   $addr = hex($addr);
+   regwrite($DATA_ADDRIN, $addr);
+   print ("Setting data mem pointer to 0x%08x\n", $addr);
+   my $lo = regread($DATA_RDATA_0);
+   my $hi = regread($DATA_RDATA_1);
+   $lo = hex($lo);
+   $hi = hex($hi);
+   print ("Read data mem at 0x%08x: 0x%08x%08x\n", $addr, $hi, $lo);
+   regwrite($DATA_ADDRIN, 0x0);
+}
+
+sub usage {
+   print "Usage: idsreg <cmd> <cmd options>\n";
+   print "  Commands:\n";
+   print "    start                start pipeline\n";
+   print "    stop                 stop pipeline\n";
+   print "    initialize           load preset instructions\n";
+   print "    readmem <addr>       read data mem at <addr>\n";
+   print "    regdump              dump all registers\n";
+}
+
+my $numargs = $#ARGV + 1;
+if( $numargs < 1 ) {
+   usage();
+   exit(1);
+}
+my $cmd = $ARGV[0];
+if ($cmd eq "initialize") {
+   initialize();
+} elsif ($cmd eq "readmem") {
+   if ($numargs < 2) {
+      usage();
+      exit(1);
+   }
+   my $str = $ARGV[1];
+   my ($addr, $value) = readmem($str);
+   printf("D-Mem @ 0x%08x : 0x%08x\n", $addr, $value);   
+} elsif ($cmd eq "start") {
+   start();
+} elsif ($cmd eq "stop") {
+   stop();
+} elsif ($cmd eq "regdump") {
+   print "Pipeline Enable: " . regread($PIPELINE_ENABLE) . "\n";
+   print "Instruction ADDRIN: " . regread($INS_ADDRIN) . "\n";
+   print "Instruction WDATA: " . regread($INS_WDATA) . "\n";
+   print "Data WDATA 1: " . regread($DATA_WDATA_1) . "\n";
+   print "Data WDATA 0: " . regread($DATA_WDATA_0) . "\n";
+   print "Data ADDRIN: " . regread($DATA_ADDRIN) . "\n";
+   print "Data RDATA 1: " . regread($DATA_RDATA_1) . "\n";
+   print "Data RDATA 0: " . regread($DATA_RDATA_0) . "\n";
+} else {
+   print "Unrecognized command $cmd\n";
+   usage();
+   exit(1)
+}
+
