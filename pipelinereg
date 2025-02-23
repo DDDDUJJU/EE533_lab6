@@ -11,6 +11,9 @@ my $DATA_ADDRIN = 0x2000214;
 my $DATA_RDATA_0 = 0x2000218;
 my $DATA_RDATA_1 = 0x200021c;
 
+my $MEM_ADDR_WIDTH = 8;
+my $INS_ADDR_WIDTH = 9;
+
 sub regwrite {
    my( $addr, $value ) = @_;
    my $cmd = sprintf( "regwrite $addr 0x%08x", $value );
@@ -46,7 +49,7 @@ sub initialize {
    regwrite($INS_ADDRIN, 0x80000004);
    regwrite( $INS_WDATA, 0x0);
 
-   regwrite($INS_ADDRIN, 0x80000000);
+   regwrite($INS_ADDRIN, 0x80000005);
    regwrite( $INS_WDATA, 0x93000000);
 
    regwrite($INS_ADDRIN, 0x00000000);
@@ -72,26 +75,52 @@ sub stop {
 }
 
 sub readmem {
-   my( $addr ) = @_;
-   $addr = hex($addr);
-   regwrite($DATA_ADDRIN, $addr);
-   print ("Setting data mem pointer to 0x%08x\n", $addr);
-   my $lo = regread($DATA_RDATA_0);
-   my $hi = regread($DATA_RDATA_1);
-   $lo = hex($lo);
-   $hi = hex($hi);
-   print ("Read data mem at 0x%08x: 0x%08x%08x\n", $addr, $hi, $lo);
-   regwrite($DATA_ADDRIN, 0x0);
+    # Prompt the user to enter a number between 0 and 512
+    my $input = shift;
+    unless (defined($input)) {
+        print "Please enter a number between 0 and 512: ";
+        chomp($input = <STDIN>);
+    }
+
+    # Validate the input
+    unless ($input =~ /^\d+$/ && $input >= 0 && $input <= 512) {
+        die "Invalid input: must be an integer between 0 and 512.\n";
+    }
+    
+    # Convert the number to a 32-bit hexadecimal string
+    my $hex_str = sprintf("%08x", $input);
+    
+    # Convert the hex string back to a number (this is our 32-bit representation)
+    my $addr = hex($hex_str);
+    
+    # Flip bit 30 to 1 (0x40000000 corresponds to bit 30)
+    $addr |= 0x40000000;
+    
+    # Set the data memory pointer with the modified address
+    regwrite($DATA_ADDRIN, $addr);
+    printf("Setting data mem pointer to 0x%08x\n", $addr);
+    
+    # Read low and high data registers
+    my $lo = regread($DATA_RDATA_0);
+    my $hi = regread($DATA_RDATA_1);
+    $lo = hex($lo);
+    $hi = hex($hi);
+    
+    printf("Read data mem at 0x%08x: 0x%08x%08x\n", $addr, $hi, $lo);
+    
+    # Reset the pointer after read
+    regwrite($DATA_ADDRIN, 0x0);
 }
+
 
 sub usage {
    print "Usage: idsreg <cmd> <cmd options>\n";
    print "  Commands:\n";
-   print "    start                start pipeline\n";
-   print "    stop                 stop pipeline\n";
-   print "    initialize           load preset instructions\n";
-   print "    readmem <addr>       read data mem at <addr>\n";
-   print "    regdump              dump all registers\n";
+   print "    start                        start pipeline\n";
+   print "    stop                         stop pipeline\n";
+   print "    initialize                   load preset instructions\n";
+   print "    readmem <addr (0-512)>       read data mem at <addr>\n";
+   print "    regdump                      dump all registers\n";
 }
 
 my $numargs = $#ARGV + 1;
@@ -107,9 +136,7 @@ if ($cmd eq "initialize") {
       usage();
       exit(1);
    }
-   my $str = $ARGV[1];
-   my ($addr, $value) = readmem($str);
-   printf("D-Mem @ 0x%08x : 0x%08x\n", $addr, $value);   
+   readmem($ARGV[1]);
 } elsif ($cmd eq "start") {
    start();
 } elsif ($cmd eq "stop") {
